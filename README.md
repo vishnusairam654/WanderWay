@@ -50,7 +50,15 @@ Whether you're mapping out a weekend road trip or a month-long backpacking route
 
 ## 📸 Screenshots
 
-> _Add screenshots or a GIF demo here_
+<img width="1901" height="906" alt="Screenshot 2026-05-05 184834" src="https://github.com/user-attachments/assets/53b8d946-aae7-4e2e-84fa-fd6d83eaa8ad" />
+
+---
+
+
+https://github.com/user-attachments/assets/7d4fa720-d1c9-4464-9db4-2735aa50cdd4
+
+
+
 
 ---
 
