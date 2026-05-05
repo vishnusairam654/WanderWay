@@ -1,9 +1,20 @@
+// app/layout.tsx
+// BUG-17 FIX: Removed non-standard `ui` prop on ClerkProvider — not in Clerk docs,
+//             can throw at runtime depending on version.
+// BUG-28 FIX: Removed `import { ui } from "@clerk/ui"` — package version may not
+//             export `ui`, causing a build-time crash.
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
-import { ui } from "@clerk/ui";
 import "./globals.css";
 import { FONTS } from "@/lib/fonts";
+import { validateEnv } from "@/lib/env";
+
+// Validate required environment variables at startup (BUG-18)
+if (typeof window === "undefined") {
+  validateEnv();
+}
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,7 +42,6 @@ export default function RootLayout({
 
   return (
     <ClerkProvider
-      ui={ui}
       appearance={{
         variables: {
           colorPrimary: "#1A6B4A",
@@ -46,10 +56,13 @@ export default function RootLayout({
           card: "shadow-2xl shadow-primary/10 border border-border/50 rounded-3xl",
           headerTitle: "font-eagle font-bold text-foreground",
           headerSubtitle: "text-muted-foreground",
-          socialButtonsBlockButton: "rounded-2xl border border-border/60 hover:bg-accent transition-all font-medium",
-          formButtonPrimary: "bg-primary hover:bg-primary/90 rounded-2xl font-eagle font-bold transition-all",
+          socialButtonsBlockButton:
+            "rounded-2xl border border-border/60 hover:bg-accent transition-all font-medium",
+          formButtonPrimary:
+            "bg-primary hover:bg-primary/90 rounded-2xl font-eagle font-bold transition-all",
           footerActionLink: "text-primary hover:text-primary/80",
-          formFieldInput: "rounded-2xl border-border/60 focus:border-primary focus:ring-primary/20 bg-background",
+          formFieldInput:
+            "rounded-2xl border-border/60 focus:border-primary focus:ring-primary/20 bg-background",
           dividerLine: "bg-border/50",
           avatarBox: "rounded-full",
         },
@@ -57,6 +70,7 @@ export default function RootLayout({
     >
       <html
         lang="en"
+        suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} ${FONTS.inter.variable} ${fontVariables} h-full antialiased`}
       >
         <body className="min-h-full flex flex-col font-sans">{children}</body>

@@ -4,34 +4,34 @@ import localFont from 'next/font/local'
 // Google Fonts
 export const inter = Inter({ subsets: ['latin'], variable: '--font-inter-custom' })
 
-// Local Fonts (from public/src/assets/fonts/)
+// Local Fonts (from public/fonts/)
 export const calfinedemo = localFont({
-    src: '../public/src/assets/fonts/Calfinedemo.otf',
+    src: '../public/fonts/Calfinedemo.otf',
     variable: '--font-calfinedemo-custom',
 })
 
 export const harmondExtraBold = localFont({
-    src: '../public/src/assets/fonts/Harmond-ExtraBoldExpanded.otf',
+    src: '../public/fonts/Harmond-ExtraBoldExpanded.otf',
     variable: '--font-harmond-extrabold-custom',
 })
 
 export const harmondSemiBoldItalic = localFont({
-    src: '../public/src/assets/fonts/Harmond-SemBdItaCond.otf',
+    src: '../public/fonts/Harmond-SemBdItaCond.otf',
     variable: '--font-harmond-semibold-italic-custom',
 })
 
 export const mamenchisa = localFont({
-    src: '../public/src/assets/fonts/Mamenchisa.otf',
+    src: '../public/fonts/Mamenchisa.otf',
     variable: '--font-mamenchisa-custom',
 })
 
 export const milkyWalky = localFont({
-    src: '../public/src/assets/fonts/MilkyWalky-Regular.otf',
+    src: '../public/fonts/MilkyWalky-Regular.otf',
     variable: '--font-milkywalky-custom',
 })
 
 export const eagle = localFont({
-    src: '../public/src/assets/fonts/EagleHorizonP.ttf',
+    src: '../public/fonts/EagleHorizonP.ttf',
     variable: '--font-eagle-custom',
 })
 

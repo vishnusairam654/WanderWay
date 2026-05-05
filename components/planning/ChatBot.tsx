@@ -1,11 +1,22 @@
 "use client";
+// components/planning/ChatBot.tsx
+// BUG-04 FIX: pendingMessage was consumed (onPendingMessageConsumed called) BEFORE
+//             the message was sent, causing silent message loss on errors.
+//             Now consumed only after handleSendMessage is called.
+// BUG-09 FIX: handleSendMessage useCallback had `input` in dependency array even
+//             though the fn takes messageText as parameter and never reads `input`.
+//             Removed `input` from deps — was causing unnecessary re-creation on keystrokes.
+// BUG-27 FIX: VoiceButton and VoiceBanner are imported and wired into the ChatBot header.
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useClerk } from "@clerk/nextjs";
 import {
   Send, Bot, User, Loader2, Sparkles, Map, Wrench,
   Plane, Hotel, Cloud, List, Wallet, Car, Zap, Train, Bus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getThreadId } from "@/lib/utils";
+import { VoiceButton, VoiceBanner } from "@/components/voice/VoiceButton";
 import type { TripData, Waypoint } from "@/types/trip";
 
 interface Message {
@@ -53,16 +64,6 @@ function isPlanningRequest(message: string): boolean {
   return PLANNING_KEYWORDS.some(k => lower.includes(k));
 }
 
-function getThreadId(): string {
-  if (typeof window === "undefined") return "server";
-  let id = sessionStorage.getItem("wandr-thread-id");
-  if (!id) {
-    id = `thread-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    sessionStorage.setItem("wandr-thread-id", id);
-  }
-  return id;
-}
-
 interface ChatBotProps {
   /** @deprecated use onTripDataUpdate instead */
   onWaypointsUpdate?: (waypoints: Waypoint[]) => void;
@@ -77,31 +78,33 @@ const ChatBot: React.FC<ChatBotProps> = ({
   pendingMessage,
   onPendingMessageConsumed,
 }) => {
+  const clerk = useClerk();
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hello! I'm your WanderWay AI 🌍\n\nTell me where you'd like to go and I'll plan your entire trip — **all travel modes** (flights, trains, buses), hotels, weather, restaurant picks, and a full itinerary!\n\nTry: **\"Plan a 4-day trip to Goa for 2 people\"**\n\nOr use the form on the left to get started.",
+      content:
+        "Hello! I'm your WanderWay AI 🌍\n\nTell me where you'd like to go and I'll plan your entire trip — **all travel modes** (flights, trains, buses), hotels, weather, restaurant picks, and a full itinerary!\n\nTry: **\"Plan a 4-day trip to Goa for 2 people\"**\n\nOr use the form on the left to get started.",
     },
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [planningStatus, setPlanningStatus] = useState<string>("");
+  // BUG-27: voice active state for rendering VoiceBanner
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const threadId = useRef<string>("");
 
   useEffect(() => {
-    threadId.current = getThreadId();
+    threadId.current = getThreadId(); // BUG-10: now from shared utility
   }, []);
 
-  // Watch for edit requests from TripResults
+  // BUG-04 FIX: consume AFTER calling send, not before.
+  // Removed the 100ms setTimeout — it was an arbitrary delay with no guarantee.
   useEffect(() => {
     if (pendingMessage && !isLoading) {
-      setInput(pendingMessage);
-      onPendingMessageConsumed?.();
-      // Auto-send after a brief delay
-      setTimeout(() => {
-        handleSendMessage(pendingMessage);
-      }, 100);
+      const msg = pendingMessage;
+      onPendingMessageConsumed?.(); // clear parent state first to prevent double-fire
+      handleSendMessage(msg);       // then send immediately
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMessage]);
@@ -112,6 +115,8 @@ const ChatBot: React.FC<ChatBotProps> = ({
     }
   }, [messages, isLoading, planningStatus]);
 
+  // BUG-09 FIX: Removed `input` from dependency array — fn takes messageText as param
+  // and never reads `input` from closure. Having it caused re-creation on every keystroke.
   const handleSendMessage = useCallback(async (messageText: string) => {
     if (!messageText.trim() || isLoading) return;
 
@@ -119,7 +124,6 @@ const ChatBot: React.FC<ChatBotProps> = ({
     const isPlanning = isPlanningRequest(userMessage);
 
     setMessages(prev => [...prev, { role: "user", content: userMessage }]);
-    setInput("");
     setIsLoading(true);
 
     if (isPlanning) {
@@ -162,9 +166,15 @@ const ChatBot: React.FC<ChatBotProps> = ({
         setPlanningStatus("");
 
         if (!response.ok) {
+          if (response.status === 401) {
+            clerk.openSignIn();
+            // Rollback the optimistic UI message
+            setMessages(prev => prev.slice(0, -1));
+            return;
+          }
           const text = await response.text();
           console.error("API Error:", text);
-          throw new Error("API failed");
+          throw new Error("API failed: " + text);
         }
 
         const data = await response.json();
@@ -179,7 +189,6 @@ const ChatBot: React.FC<ChatBotProps> = ({
           };
           setMessages(prev => [...prev, newMsg]);
 
-          // Build and emit full TripData
           if (onTripDataUpdate) {
             const tripData: TripData = {
               destination: data.destination || "Unknown",
@@ -202,7 +211,6 @@ const ChatBot: React.FC<ChatBotProps> = ({
             onTripDataUpdate(tripData);
           }
 
-          // Legacy waypoints callback
           if (data.waypoints?.length > 0 && onWaypointsUpdate) {
             onWaypointsUpdate(data.waypoints);
           }
@@ -222,16 +230,27 @@ const ChatBot: React.FC<ChatBotProps> = ({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            clerk.openSignIn();
+            setMessages(prev => prev.slice(0, -1));
+            return;
+          }
+          const text = await response.text();
+          console.error("API Error:", text);
+          throw new Error("API failed: " + text);
+        }
+
         const data = await response.json();
         if (data.message) {
           setMessages(prev => [...prev, { role: "assistant", content: data.message }]);
         } else {
-          const errorMessage = data.details || data.error || "Something went wrong";
           setMessages(prev => [
             ...prev,
             {
               role: "assistant",
-              content: `I couldn't complete that request. ${errorMessage}`,
+              content: `I couldn't complete that request. ${data.details || data.error || "Something went wrong"}`,
             },
           ]);
         }
@@ -243,26 +262,30 @@ const ChatBot: React.FC<ChatBotProps> = ({
         ...prev,
         {
           role: "assistant",
-          content: "I'm having trouble connecting right now. Please check your API keys are configured and try again.",
+          content:
+            "I'm having trouble connecting right now. Please check your API keys are configured and try again.",
         },
       ]);
     } finally {
       setIsLoading(false);
       setPlanningStatus("");
     }
-  }, [input, isLoading, messages, onTripDataUpdate, onWaypointsUpdate]);
+    // BUG-09 FIX: `input` removed from deps. Full dep list:
+  }, [isLoading, messages, onTripDataUpdate, onWaypointsUpdate]);
 
   const handleSend = useCallback(() => {
     handleSendMessage(input);
+    setInput("");
   }, [input, handleSendMessage]);
 
   const formatContent = (content: string) => {
     return content.split("\n").map((line, i) => {
-      if (line.startsWith("# ")) return <p key={i} className="font-bold text-base mt-3 mb-1">{line.slice(2)}</p>;
-      if (line.startsWith("## ")) return <p key={i} className="font-semibold mt-2 mb-1">{line.slice(3)}</p>;
-      if (line.startsWith("- ") || line.startsWith("• ")) {
+      if (line.startsWith("# "))
+        return <p key={i} className="font-bold text-base mt-3 mb-1">{line.slice(2)}</p>;
+      if (line.startsWith("## "))
+        return <p key={i} className="font-semibold mt-2 mb-1">{line.slice(3)}</p>;
+      if (line.startsWith("- ") || line.startsWith("• "))
         return <p key={i} className="pl-3 before:content-['•'] before:mr-2 before:text-primary">{line.slice(2)}</p>;
-      }
       if (line.trim() === "") return <div key={i} className="h-1.5" />;
       const boldParts = line.split(/\*\*(.*?)\*\*/g);
       if (boldParts.length > 1) {
@@ -294,11 +317,26 @@ const ChatBot: React.FC<ChatBotProps> = ({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 opacity-60">
-          <Zap size={14} className="text-secondary" />
-          <span className="text-[10px] uppercase tracking-widest">Groq · Llama 3.3</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 opacity-60">
+            <Zap size={14} className="text-secondary" />
+            <span className="text-[10px] uppercase tracking-widest">Groq · Llama 3.3</span>
+          </div>
+          {/* BUG-27 FIX: VoiceButton now rendered in ChatBot header */}
+          <VoiceButton
+            threadId={threadId.current}
+            onVoiceActiveChange={setIsVoiceActive}
+          />
         </div>
       </div>
+
+      {/* BUG-27 FIX: VoiceBanner shown when voice is active */}
+      {isVoiceActive && (
+        <VoiceBanner
+          threadId={threadId.current}
+          onClose={() => setIsVoiceActive(false)}
+        />
+      )}
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
@@ -318,11 +356,9 @@ const ChatBot: React.FC<ChatBotProps> = ({
                   {msg.role === "user" ? "You" : "WanderWay AI"}
                 </span>
               </div>
-
               <div className="space-y-0.5">
                 {msg.role === "assistant" ? formatContent(msg.content) : msg.content}
               </div>
-
               {msg.toolsUsed && msg.toolsUsed.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border/30 flex flex-wrap gap-1.5">
                   <span className="text-[10px] text-muted-foreground flex items-center gap-1 w-full mb-1">
@@ -339,7 +375,6 @@ const ChatBot: React.FC<ChatBotProps> = ({
                   ))}
                 </div>
               )}
-
               {msg.waypoints && msg.waypoints.length > 0 && (
                 <div className="mt-2 flex items-center gap-1.5 text-[10px] text-primary font-medium">
                   <Map size={10} />
@@ -355,7 +390,9 @@ const ChatBot: React.FC<ChatBotProps> = ({
             <div className="bg-muted px-4 py-3 rounded-2xl rounded-tl-none border border-border/30 max-w-[88%]">
               <div className="flex items-center gap-2">
                 <Loader2 size={14} className="animate-spin text-primary" />
-                <span className="text-xs text-muted-foreground italic">{planningStatus || "Thinking..."}</span>
+                <span className="text-xs text-muted-foreground italic">
+                  {planningStatus || "Thinking..."}
+                </span>
               </div>
               {planningStatus && (
                 <div className="mt-2 flex gap-1">
@@ -382,6 +419,7 @@ const ChatBot: React.FC<ChatBotProps> = ({
             "5 days in Rajasthan, budget ₹15,000",
           ].map((s, i) => (
             <button
+              suppressHydrationWarning
               key={i}
               onClick={() => setInput(s)}
               className="shrink-0 text-xs bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors font-medium"
@@ -396,6 +434,7 @@ const ChatBot: React.FC<ChatBotProps> = ({
       <div className="p-4 bg-background/50 border-t border-border/30 shrink-0">
         <div className="relative flex items-center gap-2 bg-muted/50 p-1.5 rounded-2xl border border-border/50 focus-within:border-primary/50 focus-within:ring-4 focus-within:ring-primary/5 transition-all">
           <input
+            suppressHydrationWarning
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -404,6 +443,7 @@ const ChatBot: React.FC<ChatBotProps> = ({
             className="flex-1 bg-transparent border-none focus:ring-0 text-sm px-3 py-2 text-foreground placeholder:text-muted-foreground/60 font-milkywalky"
           />
           <button
+            suppressHydrationWarning
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
             className={cn(

@@ -1,18 +1,13 @@
 "use client";
+// components/planning/TripForm.tsx
+// BUG-10 FIX: getThreadId now imported from lib/utils instead of defined locally.
+// BUG-11 FIX: Added validation that returnDate must be after departureDate.
+//             Previously a negative duration was silently sent to the AI.
 
 import React, { useState } from "react";
 import { ArrowRight, MapPin, Calendar, Users, Wallet, Loader2 } from "lucide-react";
+import { getThreadId } from "@/lib/utils";
 import type { TripData } from "@/types/trip";
-
-function getThreadId(): string {
-  if (typeof window === "undefined") return "server";
-  let id = sessionStorage.getItem("wandr-thread-id");
-  if (!id) {
-    id = `thread-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    sessionStorage.setItem("wandr-thread-id", id);
-  }
-  return id;
-}
 
 interface TripFormProps {
   onTripPlanned?: (data: TripData) => void;
@@ -28,19 +23,32 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const getDuration = () => {
+  const getDuration = (): number | null => {
     if (!departureDate || !returnDate) return null;
-    const diff = (new Date(returnDate).getTime() - new Date(departureDate).getTime()) / 86400000;
+    const diff =
+      (new Date(returnDate).getTime() - new Date(departureDate).getTime()) / 86400000;
     return diff > 0 ? Math.round(diff) : null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+
     if (!destination.trim()) {
       setError("Please enter a destination.");
       return;
     }
-    setError("");
+
+    // BUG-11 FIX: Validate date order before submitting
+    if (departureDate && returnDate) {
+      const dep = new Date(departureDate);
+      const ret = new Date(returnDate);
+      if (ret <= dep) {
+        setError("Return date must be after the departure date.");
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     const duration = getDuration();
@@ -83,7 +91,9 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
 
       onTripPlanned?.(tripData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(
+        err instanceof Error ? err.message : "Something went wrong. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -100,7 +110,8 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
         </h1>
         {duration && (
           <p className="mt-2 text-sm text-muted-foreground font-milkywalky">
-            {duration} day{duration > 1 ? "s" : ""} · {travelers} traveler{parseInt(travelers) > 1 ? "s" : ""}
+            {duration} day{duration > 1 ? "s" : ""} · {travelers} traveler
+            {parseInt(travelers) > 1 ? "s" : ""}
           </p>
         )}
       </div>
@@ -111,11 +122,12 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
       >
         {/* Origin */}
         <div className="relative group">
-          <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">
-            From
-          </label>
+          <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">From</label>
           <div className="relative">
-            <MapPin size={16} className="absolute inset-y-0 left-3 my-auto text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <MapPin
+              size={16}
+              className="absolute inset-y-0 left-3 my-auto text-muted-foreground group-focus-within:text-primary transition-colors"
+            />
             <input
               value={origin}
               onChange={e => setOrigin(e.target.value)}
@@ -131,8 +143,12 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
             To <span className="text-destructive">*</span>
           </label>
           <div className="relative">
-            <MapPin size={16} className="absolute inset-y-0 left-3 my-auto text-muted-foreground group-focus-within:text-secondary transition-colors" />
+            <MapPin
+              size={16}
+              className="absolute inset-y-0 left-3 my-auto text-muted-foreground group-focus-within:text-secondary transition-colors"
+            />
             <input
+              suppressHydrationWarning
               value={destination}
               onChange={e => setDestination(e.target.value)}
               required
@@ -145,25 +161,39 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
         {/* Dates */}
         <div className="grid grid-cols-2 gap-3">
           <div className="relative group">
-            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">Departure</label>
+            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">
+              Departure
+            </label>
             <div className="relative">
-              <Calendar size={14} className="absolute inset-y-0 left-3 my-auto text-muted-foreground" />
+              <Calendar
+                size={14}
+                className="absolute inset-y-0 left-3 my-auto text-muted-foreground"
+              />
               <input
+                suppressHydrationWarning
                 type="date"
                 value={departureDate}
                 onChange={e => setDepartureDate(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
                 className="w-full pl-8 pr-2 py-3 text-xs bg-background border-2 border-border/80 rounded-2xl text-foreground focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
               />
             </div>
           </div>
           <div className="relative group">
-            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">Return</label>
+            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">
+              Return
+            </label>
             <div className="relative">
-              <Calendar size={14} className="absolute inset-y-0 left-3 my-auto text-muted-foreground" />
+              <Calendar
+                size={14}
+                className="absolute inset-y-0 left-3 my-auto text-muted-foreground"
+              />
               <input
+                suppressHydrationWarning
                 type="date"
                 value={returnDate}
                 onChange={e => setReturnDate(e.target.value)}
+                min={departureDate || new Date().toISOString().split("T")[0]}
                 className="w-full pl-8 pr-2 py-3 text-xs bg-background border-2 border-border/80 rounded-2xl text-foreground focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
               />
             </div>
@@ -173,29 +203,44 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
         {/* Travelers + Budget */}
         <div className="grid grid-cols-2 gap-3">
           <div className="relative group">
-            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">Travelers</label>
+            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">
+              Travelers
+            </label>
             <div className="relative">
-              <Users size={14} className="absolute inset-y-0 left-3 my-auto text-muted-foreground" />
+              <Users
+                size={14}
+                className="absolute inset-y-0 left-3 my-auto text-muted-foreground"
+              />
               <select
+                suppressHydrationWarning
                 value={travelers}
                 onChange={e => setTravelers(e.target.value)}
                 className="w-full pl-8 pr-2 py-3 text-xs bg-background border-2 border-border/80 rounded-2xl text-foreground appearance-none focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all cursor-pointer"
               >
                 {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
-                  <option key={n} value={n}>{n} {n === 1 ? "Person" : "People"}</option>
+                  <option key={n} value={n}>
+                    {n} {n === 1 ? "Person" : "People"}
+                  </option>
                 ))}
                 <option value="10">Group (9+)</option>
               </select>
             </div>
           </div>
           <div className="relative group">
-            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">Budget (₹)</label>
+            <label className="block text-xs font-bold text-foreground mb-1.5 ml-1">
+              Budget (₹)
+            </label>
             <div className="relative">
-              <Wallet size={14} className="absolute inset-y-0 left-3 my-auto text-muted-foreground" />
+              <Wallet
+                size={14}
+                className="absolute inset-y-0 left-3 my-auto text-muted-foreground"
+              />
               <input
+                suppressHydrationWarning
                 type="number"
                 value={budget}
                 onChange={e => setBudget(e.target.value)}
+                min={0}
                 className="w-full pl-8 pr-2 py-3 text-xs bg-background border-2 border-border/80 rounded-2xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
                 placeholder="Total budget"
               />
@@ -204,10 +249,13 @@ const TripForm: React.FC<TripFormProps> = ({ onTripPlanned }) => {
         </div>
 
         {error && (
-          <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-xl">{error}</p>
+          <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-xl">
+            {error}
+          </p>
         )}
 
         <button
+          suppressHydrationWarning
           type="submit"
           disabled={isLoading || !destination.trim()}
           className="w-full flex items-center justify-center gap-2.5 py-3.5 px-6 bg-primary text-primary-foreground font-bold text-sm rounded-2xl hover:bg-primary/90 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/20 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-300"
