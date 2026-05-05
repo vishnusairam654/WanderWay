@@ -329,6 +329,28 @@ export default function TripResults({ tripData, onEditRequest }: TripResultsProp
   const [activeDay, setActiveDay] = useState(0); // 0 = overview
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([1]));
   const [showAllHotels, setShowAllHotels] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    if (!tripData || isSaving) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tripData }),
+      });
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      }
+    } catch (err) {
+      console.error("Error saving trip:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (!tripData) return (
     <div>
@@ -882,10 +904,12 @@ export default function TripResults({ tripData, onEditRequest }: TripResultsProp
                 <Share2 size={12} /> Share
               </button>
               <button
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 px-3 py-2 bg-muted text-muted-foreground rounded-full text-xs font-bold hover:bg-accent transition-all border border-border/50"
+                onClick={handleSave}
+                disabled={isSaving || saved}
+                className="flex items-center gap-1.5 px-3 py-2 bg-muted text-muted-foreground rounded-full text-xs font-bold hover:bg-accent transition-all border border-border/50 disabled:opacity-50"
               >
-                <Download size={12} /> Save
+                {saved ? <Check size={12} className="text-green-500" /> : <Download size={12} />}
+                {saved ? "Saved!" : isSaving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
