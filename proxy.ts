@@ -6,6 +6,13 @@ export const proxy = clerkMiddleware(async (auth, req) => {
     // API routes don't block unauthenticated users but attach user context
     // Protected routes require auth
     if (isProtectedRoute(req)) {
+        const { userId } = await auth();
+        if (!userId) {
+            return new Response(JSON.stringify({ error: "Unauthorized. Please sign in." }), {
+                status: 401,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
         await auth.protect();
     }
 });
