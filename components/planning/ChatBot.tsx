@@ -161,6 +161,12 @@ const ChatBot: React.FC<ChatBotProps> = ({
         clearInterval(interval);
         setPlanningStatus("");
 
+        if (!response.ok) {
+          const text = await response.text();
+          console.error("API Error:", text);
+          throw new Error("API failed");
+        }
+
         const data = await response.json();
 
         if (data.message) {
