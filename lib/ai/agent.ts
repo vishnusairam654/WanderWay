@@ -1,33 +1,36 @@
 // lib/ai/agent.ts
 // Agentic loop powered by Groq (llama-3.3-70b-versatile with tool use)
-// Calls tools autonomously until the trip plan is complete.
+// Captures ALL tool results for structured display in TripResults.
 
 import { Groq } from "groq-sdk";
 import { TRAVEL_TOOLS } from "./tools";
 import { executeTool } from "./tool-executor";
+import type { Waypoint, HotelOption, TravelOption, Attraction, ItineraryDay, BudgetBreakdown, LocalTransportOption } from "@/types/trip";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API });
 
 const SYSTEM_PROMPT = `You are WanderWay AI, an expert autonomous travel planner for Indian destinations.
 
 When a user asks you to plan a trip, you MUST call tools in this order:
-1. get_attractions — find what to see
-2. get_weather_forecast — check the weather (use realistic lat/lon for the destination)
-3. search_flights — find flights (use IATA codes: BLR=Bangalore, DEL=Delhi, BOM=Mumbai, GOI=Goa, IXM=Madurai, IXC=Chandigarh, etc.)
-4. search_hotels — find accommodation
-5. estimate_trip_budget — calculate costs
-6. get_local_transport — find how to get around
-7. create_itinerary — build the final day-by-day plan LAST
+1. get_places_live — find tourist attractions (category: "tourist_attractions")
+2. get_places_live — find restaurants (category: "restaurants")
+3. get_weather_forecast — check the weather (use realistic lat/lon for the destination)
+4. search_travel_options — find ALL travel modes: flights, trains, buses, road trips, cabs (NOT just flights)
+5. search_hotels — find accommodation
+6. estimate_trip_budget — calculate costs
+7. get_local_transport — find local transport
+8. create_itinerary — build the final day-by-day plan LAST
 
 Call ALL relevant tools before giving a final answer. Never give a trip plan without using tools first.
+IMPORTANT: For travel, use search_travel_options (not search_flights) to show all modes including trains, buses, road trips.
 
 After all tools complete, write a warm, structured response with:
-- ✈️ Flight options (cheapest + recommended)
+- ✈️ Travel options (show all modes — flights, trains, buses)
 - 🏨 Hotel recommendation
 - 🌤️ Weather summary
 - 📍 Day-by-day itinerary highlights
 - 💰 Budget breakdown
-- 🚗 Transport tips
+- 🚗 Local transport tips
 
 For general travel questions (not trip planning), answer helpfully from your knowledge.
 Keep responses friendly, detailed, and enthusiastic about travel.`;
@@ -35,9 +38,30 @@ Keep responses friendly, detailed, and enthusiastic about travel.`;
 export interface TripPlanResult {
   plan: string;
   toolCallsMade: string[];
-  waypoints: Array<{ name: string; latitude: number; longitude: number; day: number }>;
-  budgetBreakdown?: Record<string, number>;
-  weatherData?: Record<string, unknown>;
+  waypoints: Waypoint[];
+  budgetBreakdown?: BudgetBreakdown;
+  totalBudget?: number;
+  perPersonBudget?: number;
+  weatherData?: {
+    forecast: any[];
+    avgMax: number;
+    avgMin: number;
+    rainyDays: number;
+    summary: string;
+    city: string;
+  };
+  hotels?: HotelOption[];
+  travelOptions?: TravelOption[];
+  attractions?: Attraction[];
+  itinerary?: ItineraryDay[];
+  localTransport?: {
+    destination: string;
+    options: LocalTransportOption[];
+    summary: string;
+  };
+  destination?: string;
+  duration?: number;
+  travelers?: number;
 }
 
 export async function planTrip({
@@ -56,14 +80,23 @@ export async function planTrip({
   ];
 
   const toolCallsMade: string[] = [];
-  let waypoints: TripPlanResult["waypoints"] = [];
-  let budgetBreakdown: Record<string, number> | undefined;
-  let weatherData: Record<string, unknown> | undefined;
+  let waypoints: Waypoint[] = [];
+  let budgetBreakdown: BudgetBreakdown | undefined;
+  let totalBudget: number | undefined;
+  let perPersonBudget: number | undefined;
+  let weatherData: TripPlanResult["weatherData"];
+  let hotels: HotelOption[] | undefined;
+  let travelOptions: TravelOption[] | undefined;
+  let attractions: Attraction[] = [];
+  let itinerary: ItineraryDay[] | undefined;
+  let localTransport: TripPlanResult["localTransport"];
+  let destination: string | undefined;
+  let duration: number | undefined;
+  let travelers: number | undefined;
 
   const MAX_ITERATIONS = 20;
   let iteration = 0;
 
-  // Agentic loop — keeps going until model returns a final text response
   while (iteration < MAX_ITERATIONS) {
     iteration++;
 
@@ -79,25 +112,32 @@ export async function planTrip({
     const choice = response.choices[0];
     const assistantMessage = choice.message;
 
-    // Push assistant message to history
     messages.push({
       role: "assistant",
       content: assistantMessage.content || "",
       ...(assistantMessage.tool_calls ? { tool_calls: assistantMessage.tool_calls } : {}),
     } as Groq.Chat.ChatCompletionMessageParam);
 
-    // If no tool calls, we have the final answer
     if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
       return {
         plan: assistantMessage.content || "I could not generate a trip plan. Please try again.",
         toolCallsMade,
         waypoints,
         budgetBreakdown,
+        totalBudget,
+        perPersonBudget,
         weatherData,
+        hotels,
+        travelOptions,
+        attractions: attractions.length > 0 ? attractions : undefined,
+        itinerary,
+        localTransport,
+        destination,
+        duration,
+        travelers,
       };
     }
 
-    // Execute each tool call
     for (const toolCall of assistantMessage.tool_calls) {
       const toolName = toolCall.function.name;
       toolCallsMade.push(toolName);
@@ -111,23 +151,108 @@ export async function planTrip({
 
       const result = await executeTool(toolName, args);
 
-      // Extract useful data from tool results
+      // ── Capture structured data from each tool ────────────────────────
       try {
         const parsed = JSON.parse(result);
-        if (toolName === "create_itinerary" && parsed.waypoints) {
-          waypoints = parsed.waypoints;
-        }
-        if (toolName === "estimate_trip_budget" && parsed.breakdown) {
-          budgetBreakdown = parsed.breakdown;
-        }
-        if (toolName === "get_weather_forecast" && parsed.forecast) {
-          weatherData = parsed;
+
+        switch (toolName) {
+          case "search_travel_options":
+          case "search_flights":
+            if (parsed.travelOptions) {
+              travelOptions = parsed.travelOptions;
+            }
+            break;
+
+          case "search_hotels":
+            if (parsed.hotels) {
+              hotels = parsed.hotels;
+            }
+            break;
+
+          case "get_places_live":
+          case "get_attractions":
+            if (parsed.places && parsed.places.length > 0) {
+              // Separate restaurants from attractions
+              const cat = (args.category as string) || parsed.category || "";
+              if (cat === "restaurants") {
+                // store restaurants as attractions with category marker
+                const restaurants = parsed.places.map((p: Attraction) => ({
+                  ...p,
+                  category: "restaurants",
+                }));
+                attractions = [...attractions, ...restaurants];
+              } else {
+                attractions = [
+                  ...attractions,
+                  ...parsed.places.filter(
+                    (p: Attraction) => p.category !== "restaurants"
+                  ),
+                ];
+              }
+            }
+            break;
+
+          case "get_weather_forecast":
+            if (parsed.forecast || parsed.avgMax !== undefined) {
+              weatherData = {
+                forecast: parsed.forecast || [],
+                avgMax: parsed.avgMax || 30,
+                avgMin: parsed.avgMin || 22,
+                rainyDays: parsed.rainyDays || 0,
+                summary: parsed.summary || "",
+                city: parsed.city || (args.city as string) || "",
+              };
+            }
+            break;
+
+          case "estimate_trip_budget":
+            if (parsed.breakdown) {
+              budgetBreakdown = parsed.breakdown;
+              totalBudget = parsed.totalINR;
+              perPersonBudget = parsed.perPersonINR;
+              if (!travelers && args.travelers) travelers = Number(args.travelers);
+              if (!duration && args.days) duration = Number(args.days);
+              if (!destination && args.destination) destination = args.destination as string;
+            }
+            break;
+
+          case "get_local_transport":
+            if (parsed.options) {
+              localTransport = {
+                destination: parsed.destination || (args.destination as string) || "",
+                options: parsed.options,
+                summary: parsed.summary || "",
+              };
+            }
+            break;
+
+          case "create_itinerary":
+            if (parsed.waypoints) waypoints = parsed.waypoints;
+            if (parsed.itinerary) itinerary = parsed.itinerary;
+            if (parsed.destination) destination = parsed.destination;
+            if (parsed.duration) {
+              const match = String(parsed.duration).match(/\d+/);
+              if (match) duration = parseInt(match[0]);
+            }
+            if (parsed.travelers) travelers = Number(parsed.travelers);
+            break;
+
+          case "edit_trip":
+            // If edit returned new attractions or alternatives, update
+            if (parsed.alternatives) {
+              // Add to existing, don't wipe
+              const newAtts = parsed.alternatives.map((a: Attraction) => ({
+                ...a,
+                category: a.category || "tourist_attractions",
+              }));
+              attractions = [...attractions, ...newAtts];
+            }
+            break;
         }
       } catch {
-        // Non-JSON result, ignore
+        // Non-JSON result, ignore parsing
       }
 
-      // Feed tool result back to the model
       messages.push({
         role: "tool",
         tool_call_id: toolCall.id,
@@ -140,10 +265,21 @@ export async function planTrip({
     plan: "Trip planning took too long. Please try a simpler request.",
     toolCallsMade,
     waypoints,
+    budgetBreakdown,
+    totalBudget,
+    perPersonBudget,
+    weatherData,
+    hotels,
+    travelOptions,
+    attractions: attractions.length > 0 ? attractions : undefined,
+    itinerary,
+    localTransport,
+    destination,
+    duration,
+    travelers,
   };
 }
 
-// For ongoing chat (after trip is planned) — simpler, no tool forcing
 export async function chatWithAssistant({
   userMessage,
   conversationHistory = [],
@@ -175,7 +311,6 @@ You can also use tools to search for updated information if needed.`;
   const choice = response.choices[0];
   const msg = choice.message;
 
-  // If tool was called, execute and get final response
   if (msg.tool_calls && msg.tool_calls.length > 0) {
     const toolMessages: Groq.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },

@@ -1,6 +1,5 @@
 // app/api/plan/route.ts
-// Main planning endpoint. Loads history from Redis, calls the AI agentic loop,
-// saves updated history, and persists the trip plan to Supabase.
+// Main planning endpoint. Returns full structured TripData for UI rendering.
 
 import { NextResponse } from "next/server";
 import { planTrip } from "@/lib/ai/agent";
@@ -14,16 +13,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "message and threadId are required" }, { status: 400 });
         }
 
-        // Load conversation history from Redis
         const history = await getChatHistory(threadId);
 
-        // Run the agentic planning loop
         const result = await planTrip({
             userMessage: message,
             conversationHistory: history,
         });
 
-        // Update conversation history
         const updatedHistory = [
             ...history,
             { role: "user" as const, content: message },
@@ -31,7 +27,7 @@ export async function POST(req: Request) {
         ];
         await saveChatHistory(threadId, updatedHistory);
 
-        // Attempt to save trip to Supabase (non-fatal if it fails)
+        // Attempt Supabase save (non-fatal)
         if (result.waypoints.length > 0) {
             try {
                 const { createClient } = await import("@/lib/supabase/server");
@@ -39,7 +35,7 @@ export async function POST(req: Request) {
                 await supabase.from("trips").upsert(
                     {
                         thread_id: threadId,
-                        destination: extractDestination(message),
+                        destination: result.destination || extractDestination(message),
                         plan_data: {
                             plan: result.plan,
                             toolsUsed: result.toolCallsMade,
@@ -52,17 +48,28 @@ export async function POST(req: Request) {
                     { onConflict: "thread_id" }
                 );
             } catch {
-                // Supabase save failure is non-fatal
-                console.warn("Supabase save skipped (no credentials or schema not set up)");
+                console.warn("Supabase save skipped");
             }
         }
 
         return NextResponse.json({
+            // Core
             message: result.plan,
             toolsUsed: result.toolCallsMade,
             waypoints: result.waypoints,
-            budgetBreakdown: result.budgetBreakdown,
-            weatherData: result.weatherData,
+            // Structured data for TripResults
+            destination: result.destination || extractDestination(message),
+            duration: result.duration || extractDuration(message),
+            travelers: result.travelers || extractTravelers(message),
+            budgetBreakdown: result.budgetBreakdown || null,
+            totalBudget: result.totalBudget || null,
+            perPersonBudget: result.perPersonBudget || null,
+            weatherData: result.weatherData || null,
+            hotels: result.hotels || null,
+            travelOptions: result.travelOptions || null,
+            attractions: result.attractions || null,
+            itinerary: result.itinerary || null,
+            localTransport: result.localTransport || null,
         });
     } catch (error: unknown) {
         console.error("Plan API error:", error);
@@ -72,11 +79,30 @@ export async function POST(req: Request) {
 }
 
 function extractDestination(message: string): string {
-    // Very rough destination extraction for the DB record
-    const words = message.toLowerCase().split(" ");
-    const toIndex = words.indexOf("to");
+    const patterns = [
+        /(?:to|in|visit|explore)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/,
+        /trip\s+to\s+([A-Z][a-z]+)/i,
+    ];
+    for (const p of patterns) {
+        const m = message.match(p);
+        if (m) return m[1];
+    }
+    const words = message.split(" ");
+    const toIndex = words.findIndex(w => w.toLowerCase() === "to");
     if (toIndex !== -1 && words[toIndex + 1]) {
-        return words[toIndex + 1].charAt(0).toUpperCase() + words[toIndex + 1].slice(1);
+        return words[toIndex + 1].replace(/[^a-zA-Z]/g, "");
     }
     return "Unknown";
+}
+
+function extractDuration(message: string): number {
+    const m = message.match(/(\d+)\s*(?:day|night)/i);
+    return m ? parseInt(m[1]) : 3;
+}
+
+function extractTravelers(message: string): number {
+    const m = message.match(/(\d+)\s*(?:person|people|traveler|adult|pax)/i);
+    if (m) return parseInt(m[1]);
+    const w = message.match(/for\s+(\d+)/i);
+    return w ? parseInt(w[1]) : 2;
 }
