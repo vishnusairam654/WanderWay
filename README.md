@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌍 WanderWay — AI-Powered Travel Planner
 
-## Getting Started
+> Plan smarter trips with interactive maps, AI recommendations, and real-time route visualization.
 
-First, run the development server:
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-ram654.dev-blue?style=for-the-badge)](https://ram654.dev)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+
+---
+
+## ✨ What It Does
+
+WanderWay is a full-stack travel planning application that combines **interactive Mapbox maps**, an **AI chat assistant**, and a **clean drag-and-drop planner UI** — making it easy to plan and visualize multi-stop trips in minutes.
+
+Whether you're mapping out a weekend road trip or a month-long backpacking route, WanderWay gives you the tools to plan it all in one place.
+
+---
+
+## 🚀 Key Features
+
+| Feature | Description |
+|---|---|
+| 🗺️ **Interactive Trip Map** | Mapbox-powered map with route polylines and travel mode selection (driving, walking, cycling) |
+| 🤖 **AI Chat Assistant** | Ask travel questions and get smart suggestions powered by Groq / Llama 3.3 (streamed via SSE) |
+| 📍 **Geocoding Search** | Autocomplete location search using Mapbox Geocoding API |
+| 🧭 **Trip Planner** | Add, reorder, and manage stops with a polished drag-and-drop interface |
+| 🎨 **Custom MUI Theme** | Cohesive design system with a golden yellow, coral, and forest green palette |
+
+---
+
+## 🛠️ Tech Stack
+
+**Frontend**
+- Next.js 15 (App Router)
+- Material UI (MUI v5) with custom theme
+- Mapbox GL JS
+- Fraunces + Plus Jakarta Sans fonts
+
+**Backend / AI**
+- Groq API (Llama 3.3) — streaming AI responses
+- Server-Sent Events (SSE) for real-time output
+- Next.js API Routes
+
+**Dev Tools**
+- TypeScript
+- ESLint + Prettier
+- Vercel (Deployment)
+
+---
+
+## 📸 Screenshots
+
+> _Add screenshots or a GIF demo here_
+
+---
+
+## ⚙️ Getting Started
+
+### Prerequisites
+- Node.js 18+
+- Mapbox API Key
+- Groq API Key
+
+### Installation
+
+```bash
+git clone https://github.com/vishnusairam654/wanderway.git
+cd wanderway
+npm install
+```
+
+### Environment Variables
+
+Create a `.env.local` file:
+
+```env
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token
+GROQ_API_KEY=your_groq_api_key
+```
+
+### Run Locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📂 Project Structure
 
-## Learn More
+```
+wanderway/
+├── app/
+│   ├── api/          # AI chat & geocoding API routes
+│   ├── components/   # Navbar, TripMap, Planner, ChatAssistant
+│   └── theme/        # MUI custom theme config
+├── public/
+└── .env.local
+```
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 👤 Author
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Vishnu Sai Ram**
+- 🌐 [ram654.dev](https://ram654.dev)
+- 💼 [LinkedIn](https://linkedin.com/in/vishnu654)
+- 🐙 [GitHub](https://github.com/vishnusairam654)
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> ⭐ If you found this project interesting, consider giving it a star!
