@@ -1,10 +1,9 @@
-// middleware.ts  ← MUST be named middleware.ts for Next.js to pick it up
-// (Previously misnamed proxy.ts — Next.js was ignoring the file entirely)
+// proxy.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isProtectedRoute = createRouteMatcher(["/api/plan(.*)", "/api/chat(.*)"]);
 
-export const middleware = clerkMiddleware(async (auth, req) => {
+export const proxy = clerkMiddleware(async (auth, req) => {
     if (isProtectedRoute(req)) {
         const { userId } = await auth();
         if (!userId) {

@@ -85,7 +85,6 @@ const NavBar = () => {
               <div className="[&_.cl-avatarBox]:w-9 [&_.cl-avatarBox]:h-9 [&_.cl-avatarBox]:ring-2 [&_.cl-avatarBox]:ring-primary/20 [&_.cl-avatarBox]:rounded-full">
                 <UserButton
                   appearance={{ elements: { avatarBox: "w-9 h-9 ring-2 ring-primary/20" } }}
-                  afterSignOutUrl="/"
                 />
               </div>
             </div>
