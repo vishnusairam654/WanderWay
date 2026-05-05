@@ -17,6 +17,7 @@
     "clsx": "^2.1.1",
     "groq-sdk": "^1.1.2",
     "livekit-client": "^2.18.8",
+    "livekit-server-sdk": "^2.15.2",
     "lucide-react": "^1.14.0",
     "mapbox-gl": "^3.23.1",
     "next": "16.2.4",
